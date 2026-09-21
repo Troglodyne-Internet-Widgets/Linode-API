@@ -145,6 +145,15 @@ takes a couple of seconds.  That is done once for each specification file and
 API version in a process, and every later client built from the same pair
 reuses it.
 
+# BUGS
+
+Please report any bugs or feature requests on the bugtracker website
+[https://github.com/Troglodyne-Internet-Widgets/Linode-API/issues](https://github.com/Troglodyne-Internet-Widgets/Linode-API/issues)
+
+When submitting a bug or request, please include a test-file or a
+patch to an existing test-file that illustrates the bug or desired
+feature.
+
 # AUTHORS
 
 Current Maintainers:
