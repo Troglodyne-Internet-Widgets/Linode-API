@@ -1,0 +1,18 @@
+*.swp
+*.swo
+*.swn
+
+# Build leavings
+MYMETA.json
+MYMETA.yml
+Makefile
+pm_to_blib
+blib/
+cover_db/
+.build
+
+# The tarball dzil builds and the directory it builds it from, anchored to the
+# root: unanchored, `Linode-API-*` also matches t/Linode-API.t, and `git add`
+# skips an ignored file without saying so.
+/Linode-API-*.tar.gz
+/Linode-API-*/

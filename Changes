@@ -1,0 +1,6 @@
+Revision history for Linode-API
+
+0.001 2026-09-21 TEODESIAN
+    - Initial Release
+    - Ships Linode's OpenAPI specification, version 4.215.0, from
+      linode/linode-api-docs.
