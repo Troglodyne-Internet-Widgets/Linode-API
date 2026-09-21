@@ -71,10 +71,11 @@ C<< json => {...} >>:
 What comes back is a L<Mojo::Transaction::HTTP>.  Its C<res> is the response,
 and C<< $tx->res->json >> is the decoded body.
 
-=head2 What is changed in the specification
+=head2 What is changed from OpenAPI::Client
 
-The specification is changed in memory as it is loaded, where following it to
-the letter would send the wrong thing or refuse the right one:
+The specification is changed in memory as it is loaded, and one request is
+changed as it is built, where following them to the letter would send the wrong
+thing or refuse the right one:
 
 =over 4
 
@@ -82,6 +83,10 @@ the letter would send the wrong thing or refuse the right one:
 
 =item * A header parameter is always a string.  Linode describes C<X-Filter> as
 the object its JSON encodes, and that object would be sent as C<HASH(0x...)>.
+
+=item * A path parameter that holds a slash, such as the id of a private image,
+C<private/123>, is sent with the slash as it is.  L<OpenAPI::Client> escapes it
+as C<%2F>, and Linode's own examples send it unescaped.
 
 =item * A member of an C<allOf> never forbids additional properties.  Linode
 closes one member of several, which forbids everything the other members
@@ -192,11 +197,22 @@ sub new {
 
     my $self = $class->SUPER::new( _specification( $specification, $api_version ), %options );
     _alias_operations( ref $self, $self->validator->routes );
+    $self->on( after_build_tx => \&_unescape_slashes );
     if ( defined $token ) {
         $self->on( after_build_tx => sub { $_[1]->req->headers->authorization("Bearer $token") } );
     }
 
     return $self;
+}
+
+# An id Linode hands out can hold a slash, as private/123 does, and Linode wants
+# it in the path as a slash, where OpenAPI::Client escapes it within one segment.
+sub _unescape_slashes {
+    my ( undef, $tx ) = @_;
+
+    my $path = $tx->req->url->path;
+    $path->parts( [ map { split q{/}, $_ } @{ $path->parts } ] );
+    return;
 }
 
 # OpenAPI::Client names the class it generates after the hashref's address, so

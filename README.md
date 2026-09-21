@@ -4,7 +4,7 @@ Linode::API - A client for the Linode API, generated from Linode's own OpenAPI s
 
 # VERSION
 
-version 0.001
+version 0.002
 
 # SYNOPSIS
 
@@ -64,14 +64,18 @@ my $tx = $linode->post_linode_instance(
 What comes back is a [Mojo::Transaction::HTTP](https://metacpan.org/pod/Mojo%3A%3ATransaction%3A%3AHTTP).  Its `res` is the response,
 and `$tx->res->json` is the decoded body.
 
-## What is changed in the specification
+## What is changed from OpenAPI::Client
 
-The specification is changed in memory as it is loaded, where following it to
-the letter would send the wrong thing or refuse the right one:
+The specification is changed in memory as it is loaded, and one request is
+changed as it is built, where following them to the letter would send the wrong
+thing or refuse the right one:
 
 - The API version is written into each path, as ["new"](#new) describes.
 - A header parameter is always a string.  Linode describes `X-Filter` as
 the object its JSON encodes, and that object would be sent as `HASH(0x...)`.
+- A path parameter that holds a slash, such as the id of a private image,
+`private/123`, is sent with the slash as it is.  [OpenAPI::Client](https://metacpan.org/pod/OpenAPI%3A%3AClient) escapes it
+as `%2F`, and Linode's own examples send it unescaped.
 - A member of an `allOf` never forbids additional properties.  Linode
 closes one member of several, which forbids everything the other members
 declare: `post_linode_instance` would refuse `region` and `type`, which it
