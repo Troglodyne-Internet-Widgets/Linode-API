@@ -71,6 +71,25 @@ C<< json => {...} >>:
 What comes back is a L<Mojo::Transaction::HTTP>.  Its C<res> is the response,
 and C<< $tx->res->json >> is the decoded body.
 
+=head2 What is changed in the specification
+
+The specification is changed in memory as it is loaded, where following it to
+the letter would send the wrong thing or refuse the right one:
+
+=over 4
+
+=item * The API version is written into each path, as L</new> describes.
+
+=item * A header parameter is always a string.  Linode describes C<X-Filter> as
+the object its JSON encodes, and that object would be sent as C<HASH(0x...)>.
+
+=item * A member of an C<allOf> never forbids additional properties.  Linode
+closes one member of several, which forbids everything the other members
+declare: C<post_linode_instance> would refuse C<region> and C<type>, which it
+also requires.  Linode still checks the body when it gets it.
+
+=back
+
 =head2 Telling the failures apart
 
 C<< $tx->error >> is set for three different things, and it is worth knowing
@@ -178,7 +197,13 @@ sub _specification {
     my ( $file, $api_version ) = @_;
 
     state %specifications;
-    return $specifications{"$api_version\0$file"} //= _fix_json_headers( _fix_api_version( decode_json( read_binary($file) ), $api_version ) );
+    return $specifications{"$api_version\0$file"} //= do {
+        my $spec = decode_json( read_binary($file) );
+        _fix_api_version( $spec, $api_version );
+        _fix_json_headers($spec);
+        _fix_closed_all_of($spec);
+        $spec;
+    };
 }
 
 # Write the version into each path, because OpenAPI::Client fills a path in
@@ -223,6 +248,33 @@ sub _fix_json_headers {
     }
 
     return $spec;
+}
+
+# A member of an allOf that says additionalProperties: false forbids what its
+# siblings declare, so Linode's check of the body is the one that has to do.
+sub _fix_closed_all_of {
+    my ($node) = @_;
+
+    if ( ref $node eq 'ARRAY' ) {
+        _fix_closed_all_of($_) foreach @$node;
+    }
+    elsif ( ref $node eq 'HASH' ) {
+        if ( ref $node->{allOf} eq 'ARRAY' && @{ $node->{allOf} } > 1 ) {
+            foreach my $member ( grep { ref $_ eq 'HASH' && _is_closed($_) } @{ $node->{allOf} } ) {
+                delete $member->{additionalProperties};
+            }
+        }
+        _fix_closed_all_of($_) foreach values %$node;
+    }
+
+    return $node;
+}
+
+# A JSON false is an object, so ask it what it is rather than whether it is a ref.
+sub _is_closed {
+    my ($schema) = @_;
+    my $additional = $schema->{additionalProperties};
+    return defined $additional && ref $additional ne 'HASH' && !$additional;
 }
 
 # Give each kebab-case operation a snake_case name a caller can write as a

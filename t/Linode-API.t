@@ -19,6 +19,7 @@ use Test2::Plugin::NoWarnings;
 use Test::File::ShareDir::Dist { 'Linode-API' => 'share' };
 use FindBin::libs;
 
+use Cpanel::JSON::XS();
 use File::ShareDir();
 use Mojolicious();
 
@@ -69,6 +70,9 @@ subtest 'new' => sub {
         }
     );
     is( $req->url->path->to_string, '/v4/linode/instances', 'the promise form has a snake_case alias too' );
+
+    $req = last_request( sub { $linode->post_linode_instance( {}, json => { region => 'bogus', type => 'bogus' } ) } );
+    is( $req->json, { region => 'bogus', type => 'bogus' }, 'a body the specification closes in one allOf member and opens in another is sent' );
 
     $req = last_request( sub { $linode->get_maintenance_policies( {} ) } );
     is( $req->url->path->to_string, '/v4beta/maintenance/policies', 'an operation that is only in v4beta goes there from a v4 client' );
@@ -133,6 +137,33 @@ subtest '_fix_json_headers' => sub {
     is( $object->{schema}, { type => 'string', description => 'JSON' }, 'a header described as an object becomes a string' );
     is( $string->{schema}, { type => 'string', maxLength   => 3 },      'a header that is already a string keeps its schema' );
     is( $query->{schema},  { type => 'object' }, 'a parameter that is not a header is left alone' );
+};
+
+subtest '_fix_closed_all_of' => sub {
+    my $closed = sub { return { type => 'object', additionalProperties => Cpanel::JSON::XS::false(), properties => { a => {} } } };
+    my $open   = { properties           => { b    => {} } };
+    my $typed  = { additionalProperties => { type => 'string' } };
+
+    my $spec = {
+        paths => {
+            '/things' => {
+                post => {
+                    requestBody => { content => { 'application/json' => { schema => { allOf => [ $closed->(), $open, $typed ] } } } },
+                },
+            },
+        },
+        alone => $closed->(),
+        only  => { allOf => [ $closed->() ] },
+    };
+
+    Linode::API::_fix_closed_all_of($spec);
+    is(
+        $spec->{paths}{'/things'}{post}{requestBody}{content}{'application/json'}{schema}{allOf},
+        [ { type => 'object', properties => { a => {} } }, { properties => { b => {} } }, { additionalProperties => { type => 'string' } } ],
+        'a closed member of an allOf is opened, however deep it is, and a schema for additional properties is left alone',
+    );
+    is( $spec->{alone}, $closed->(),                  'a closed schema outside an allOf stays closed' );
+    is( $spec->{only},  { allOf => [ $closed->() ] }, 'so does the only member of an allOf, which has no siblings to forbid' );
 };
 
 subtest '_fix_api_version' => sub {
