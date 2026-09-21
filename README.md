@@ -116,6 +116,14 @@ The requests go through a [Mojo::UserAgent](https://metacpan.org/pod/Mojo%3A%3AU
 connect timeout and a 40 second inactivity timeout, with no limit on the request
 as a whole.  To change them, pass a `ua` of your own.
 
+## The specification's license
+
+The specification in this distribution's share directory, `openapi.json`, is
+Linode's, distributed unedited from [https://github.com/linode/linode-api-docs](https://github.com/linode/linode-api-docs)
+under the Apache License 2.0.  That license is beside it, as
+`openapi.LICENSE.txt`.  Everything else in the distribution is under the MIT
+license below.
+
 # METHODS
 
 ## new

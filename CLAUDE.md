@@ -34,9 +34,12 @@ job is the defect, whichever is better.
 | `dist.ini` | the build, and what has to be installed to run it |
 
 | `share/openapi.json` | every operation, its parameters and its responses; Linode's, unedited |
+| `share/openapi.LICENSE.txt` | the Apache 2.0 license the specification is under |
 
 Update `share/openapi.json` only by copying Linode's published file over it,
-and put its `info.version` in `Changes`.  What the module changes about the
+and put its `info.version` in `Changes`.  It is Apache 2.0, and
+`share/openapi.LICENSE.txt` is that license, which has to ship beside it: if
+upstream ever changes its license or adds a NOTICE file, both come too.  What the module changes about the
 specification, it changes in memory when it loads it, so a caller can hand it a
 newer copy.
 

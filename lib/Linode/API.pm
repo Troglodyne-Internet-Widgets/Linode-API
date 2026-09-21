@@ -131,6 +131,14 @@ The requests go through a L<Mojo::UserAgent>, whose defaults are a 10 second
 connect timeout and a 40 second inactivity timeout, with no limit on the request
 as a whole.  To change them, pass a C<ua> of your own.
 
+=head2 The specification's license
+
+The specification in this distribution's share directory, C<openapi.json>, is
+Linode's, distributed unedited from L<https://github.com/linode/linode-api-docs>
+under the Apache License 2.0.  That license is beside it, as
+C<openapi.LICENSE.txt>.  Everything else in the distribution is under the MIT
+license below.
+
 =method new
 
     my $linode = Linode::API->new(%options);

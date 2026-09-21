@@ -6,3 +6,5 @@ Revision history for Linode-API
       linode/linode-api-docs.  It is changed in memory as it loads, where
       following it to the letter would send the wrong request or refuse the
       right one: see "What is changed in the specification" in the POD.
+    - The specification is Linode's, under the Apache License 2.0, which ships
+      beside it as share/openapi.LICENSE.txt.  The rest is MIT.

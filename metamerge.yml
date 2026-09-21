@@ -1,0 +1,4 @@
+---
+# share/openapi.json is Linode's, under Apache 2.0; the rest is MIT.
+license:
+  - apache_2_0
