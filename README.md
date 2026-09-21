@@ -64,6 +64,19 @@ my $tx = $linode->post_linode_instance(
 What comes back is a [Mojo::Transaction::HTTP](https://metacpan.org/pod/Mojo%3A%3ATransaction%3A%3AHTTP).  Its `res` is the response,
 and `$tx->res->json` is the decoded body.
 
+## What is changed in the specification
+
+The specification is changed in memory as it is loaded, where following it to
+the letter would send the wrong thing or refuse the right one:
+
+- The API version is written into each path, as ["new"](#new) describes.
+- A header parameter is always a string.  Linode describes `X-Filter` as
+the object its JSON encodes, and that object would be sent as `HASH(0x...)`.
+- A member of an `allOf` never forbids additional properties.  Linode
+closes one member of several, which forbids everything the other members
+declare: `post_linode_instance` would refuse `region` and `type`, which it
+also requires.  Linode still checks the body when it gets it.
+
 ## Telling the failures apart
 
 `$tx->error` is set for three different things, and it is worth knowing
