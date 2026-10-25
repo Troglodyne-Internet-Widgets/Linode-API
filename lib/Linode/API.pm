@@ -16,7 +16,7 @@ use Cpanel::JSON::XS qw{decode_json};
 use Data::Validate::IP();
 use File::ShareDir qw{dist_file};
 use File::Slurper  qw{read_binary};
-use Mojo::Util     qw{monkey_patch};
+use Sub::Install   qw{install_sub};
 
 =for test_synopsis use feature qw{say}; my ( $personal_access_token, $id );
 
@@ -358,7 +358,7 @@ sub _alias_operations {
     foreach my $operation ( grep { defined && index( $_, q{-} ) >= 0 } map { $_->{operation_id} } $routes->each ) {
         foreach my $method ( $operation, "${operation}_p" ) {
             ( my $alias = $method ) =~ tr/-/_/;
-            monkey_patch( $class, $alias => $class->can($method) ) unless $class->can($alias);
+            install_sub( { code => $class->can($method), into => $class, as => $alias } ) unless $class->can($alias);
         }
     }
 

@@ -5,6 +5,8 @@ Revision history for Linode-API
       warning.  Linode names formats of its own, and JSON::Validator warned on
       every value of one, then sent it unchecked anyway.  An ip, such as the
       address of put_ip, is now checked as an IPv4 or IPv6 address.
+    - Install the snake_case aliases of the operations with Sub::Install, not
+      Mojo::Util.  Linode::API itself now names no module of Mojolicious.
 
 0.002 2026-09-21 TEODESIAN
     - Send a path parameter that holds a slash with the slash as it is.  An id
