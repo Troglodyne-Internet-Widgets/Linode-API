@@ -4,7 +4,7 @@ Linode::API - A client for the Linode API, generated from Linode's own OpenAPI s
 
 # VERSION
 
-version 0.002
+version 0.003
 
 # SYNOPSIS
 
@@ -80,6 +80,12 @@ as `%2F`, and Linode's own examples send it unescaped.
 closes one member of several, which forbids everything the other members
 declare: `post_linode_instance` would refuse `region` and `type`, which it
 also requires.  Linode still checks the body when it gets it.
+- A value in a format that [JSON::Validator](https://metacpan.org/pod/JSON%3A%3AValidator) does not know is sent
+without a check and without a warning.  Linode names formats of its own, such
+as `ssh-key` and `ipv4|ipv6/prefix_length`, and its examples do not always
+match their names, so a check here could refuse what Linode takes.  Linode
+checks them when it gets them.  The exception is `ip`, an IPv4 or IPv6
+address, which is checked.
 
 ## Telling the failures apart
 
