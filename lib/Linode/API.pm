@@ -14,9 +14,15 @@ use parent qw{OpenAPI::Client};
 use Carp             qw{croak};
 use Cpanel::JSON::XS qw{decode_json};
 use Data::Validate::IP();
-use File::ShareDir qw{dist_file};
-use File::Slurper  qw{read_binary};
-use Mojo::Util     qw{monkey_patch};
+use File::ShareDir     qw{dist_file};
+use File::Slurper      qw{read_binary};
+use IO::Compress::Gzip qw{gzip $GzipError};
+use MIME::Base64       qw{encode_base64};
+use Mojo::Util         qw{monkey_patch};
+
+# The most user_data that Linode takes, in bytes after base64 decoding.  Its
+# specification says 65535, and the API refuses anything over this.
+our $USER_DATA_MAX = 16384;
 
 =for test_synopsis use feature qw{say}; my ( $personal_access_token, $id );
 
@@ -100,6 +106,12 @@ as C<ssh-key> and C<ipv4|ipv6/prefix_length>, and its examples do not always
 match their names, so a check here could refuse what Linode takes.  Linode
 checks them when it gets them.  The exception is C<ip>, an IPv4 or IPv6
 address, which is checked.
+
+=item * C<user_data> is at most 21848 characters, the base64 of 16384 bytes.
+The specification allows 65535 bytes before encoding, and Linode refuses more
+than 16384 with C<decoded user_data must not exceed 16384 bytes>.  So a payload
+over that is refused here, and not sent.  L</encode_user_data> fits more
+cloud-config into the same room.
 
 =back
 
@@ -215,6 +227,31 @@ sub new {
     return $self;
 }
 
+=method encode_user_data
+
+    my $user_data = Linode::API->encode_user_data($cloud_config);
+    $linode->post_rebuild_linode_instance( { linodeId => $id }, json => { metadata => { user_data => $user_data }, ... } );
+
+Returns C<$cloud_config> compressed with gzip and encoded in base64, which is
+what the C<user_data> of C<metadata> takes.  cloud-init uncompresses it.  How
+much more cloud-config fits depends on what it holds: YAML and scripts compress
+well, and keys and other base64 hardly at all.
+
+Dies with both sizes when even the compressed payload is over 16384 bytes.
+
+=cut
+
+sub encode_user_data {
+    my ( undef, $cloud_config ) = @_;
+
+    croak 'encode_user_data needs the cloud-config to encode' unless defined $cloud_config;
+    gzip( \$cloud_config => \my $compressed, -Level => 9, Minimal => 1 ) or croak "Could not compress the user_data: $GzipError";
+    croak 'The user_data is ' . length($cloud_config) . ' bytes, and ' . length($compressed) . " bytes compressed.  Linode takes at most $USER_DATA_MAX"
+      if length $compressed > $USER_DATA_MAX;
+
+    return encode_base64( $compressed, q{} );
+}
+
 # An id Linode hands out can hold a slash, as private/123 does, and Linode wants
 # it in the path as a slash, where OpenAPI::Client escapes it within one segment.
 sub _unescape_slashes {
@@ -236,6 +273,7 @@ sub _specification {
         _fix_api_version( $spec, $api_version );
         _fix_json_headers($spec);
         _fix_closed_all_of($spec);
+        _fix_user_data($spec);
         $spec;
     };
 }
@@ -309,6 +347,23 @@ sub _is_closed {
     my ($schema) = @_;
     my $additional = $schema->{additionalProperties};
     return defined $additional && ref $additional ne 'HASH' && !$additional;
+}
+
+# The base64 of $USER_DATA_MAX bytes is the longest user_data that Linode takes,
+# whatever its specification says.
+sub _fix_user_data {
+    my ($node) = @_;
+
+    if ( ref $node eq 'ARRAY' ) {
+        _fix_user_data($_) foreach @$node;
+    }
+    elsif ( ref $node eq 'HASH' ) {
+        my $user_data = ref $node->{properties} eq 'HASH' ? $node->{properties}{user_data} : undef;
+        $user_data->{maxLength} = 4 * int( ( $USER_DATA_MAX + 2 ) / 3 ) if ref $user_data eq 'HASH';
+        _fix_user_data($_) foreach values %$node;
+    }
+
+    return $node;
 }
 
 # JSON::Validator warns about a format that it has no rule for, on every value
