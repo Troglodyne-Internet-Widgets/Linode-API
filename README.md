@@ -4,7 +4,7 @@ Linode::API - A client for the Linode API, generated from Linode's own OpenAPI s
 
 # VERSION
 
-version 0.003
+version 0.004
 
 # SYNOPSIS
 
@@ -86,6 +86,11 @@ as `ssh-key` and `ipv4|ipv6/prefix_length`, and its examples do not always
 match their names, so a check here could refuse what Linode takes.  Linode
 checks them when it gets them.  The exception is `ip`, an IPv4 or IPv6
 address, which is checked.
+- `user_data` is at most 21848 characters, the base64 of 16384 bytes.
+The specification allows 65535 bytes before encoding, and Linode refuses more
+than 16384 with `decoded user_data must not exceed 16384 bytes`.  So a payload
+over that is refused here, and not sent.  ["encode\_user\_data"](#encode_user_data) fits more
+cloud-config into the same room.
 
 ## Telling the failures apart
 
@@ -176,6 +181,20 @@ takes a couple of seconds.  That is done once for each specification file and
 API version in a process, and every later client built from the same pair
 reuses it.
 
+## encode\_user\_data
+
+```perl
+my $user_data = Linode::API->encode_user_data($cloud_config);
+$linode->post_rebuild_linode_instance( { linodeId => $id }, json => { metadata => { user_data => $user_data }, ... } );
+```
+
+Returns `$cloud_config` compressed with gzip and encoded in base64, which is
+what the `user_data` of `metadata` takes.  cloud-init uncompresses it.  How
+much more cloud-config fits depends on what it holds: YAML and scripts compress
+well, and keys and other base64 hardly at all.
+
+Dies with both sizes when even the compressed payload is over 16384 bytes.
+
 # BUGS
 
 Please report any bugs or feature requests on the bugtracker website
@@ -191,9 +210,10 @@ Current Maintainers:
 
 - George S. Baugh <george@troglodyne.net>
 
-# CONTRIBUTOR
+# CONTRIBUTORS
 
-troglodyne-bot <morpheus@troglodyne.net>
+- troglodyne-bot <morpheus@troglodyne.net>
+- troglodyne-robot <trogbot@troglodyne.net>
 
 # COPYRIGHT AND LICENSE
 
