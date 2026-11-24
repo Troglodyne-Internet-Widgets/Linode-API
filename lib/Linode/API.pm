@@ -8,6 +8,7 @@ use strict;
 use warnings FATAL => 'all';
 
 use re '/aa';
+no autovivification;
 
 use parent qw{OpenAPI::Client};
 
@@ -258,7 +259,7 @@ sub _unescape_slashes {
     my ( undef, $tx ) = @_;
 
     my $path = $tx->req->url->path;
-    $path->parts( [ map { split q{/}, $_ } @{ $path->parts } ] );
+    $path->parts( [ map { split m{/}sx, $_ } @{ $path->parts } ] );
     return;
 }
 
@@ -295,7 +296,7 @@ sub _fix_api_version {
         if (@versions) {
             my $version = ( grep { $_ eq $api_version } @versions ) ? $api_version : $versions[0];
             $item->{parameters} = [ grep { $_ != $parameter } @{ $item->{parameters} } ];
-            $path =~ s{\{apiVersion\}}{$version}g;
+            $path =~ s{ [{]apiVersion[}] }{$version}gsx;
         }
         $paths->{$path} = $item;
     }
@@ -325,21 +326,43 @@ sub _fix_json_headers {
 # A member of an allOf that says additionalProperties: false forbids what its
 # siblings declare, so Linode's check of the body is the one that has to do.
 sub _fix_closed_all_of {
-    my ($node) = @_;
+    my ($spec) = @_;
 
-    if ( ref $node eq 'ARRAY' ) {
-        _fix_closed_all_of($_) foreach @$node;
-    }
-    elsif ( ref $node eq 'HASH' ) {
-        if ( ref $node->{allOf} eq 'ARRAY' && @{ $node->{allOf} } > 1 ) {
-            foreach my $member ( grep { ref $_ eq 'HASH' && _is_closed($_) } @{ $node->{allOf} } ) {
-                delete $member->{additionalProperties};
+    _each_hash(
+        $spec,
+        sub {
+            my ($node) = @_;
+            if ( ref $node->{allOf} eq 'ARRAY' && @{ $node->{allOf} } > 1 ) {
+                foreach my $member ( grep { ref $_ eq 'HASH' && _is_closed($_) } @{ $node->{allOf} } ) {
+                    delete $member->{additionalProperties};
+                }
             }
+            return;
         }
-        _fix_closed_all_of($_) foreach values %$node;
+    );
+
+    return $spec;
+}
+
+# Call $callback with every hash in the structure, however deep.  It walks with
+# a list rather than by calling itself, so that a deep specification cannot
+# exhaust the stack.
+sub _each_hash {
+    my ( $structure, $callback ) = @_;
+
+    my @nodes = ($structure);
+    while (@nodes) {
+        my $node = shift @nodes;
+        if ( ref $node eq 'ARRAY' ) {
+            push @nodes, @$node;
+        }
+        elsif ( ref $node eq 'HASH' ) {
+            $callback->($node);
+            push @nodes, values %$node;
+        }
     }
 
-    return $node;
+    return;
 }
 
 # A JSON false is an object, so ask it what it is rather than whether it is a ref.
@@ -352,18 +375,19 @@ sub _is_closed {
 # The base64 of $USER_DATA_MAX bytes is the longest user_data that Linode takes,
 # whatever its specification says.
 sub _fix_user_data {
-    my ($node) = @_;
+    my ($spec) = @_;
 
-    if ( ref $node eq 'ARRAY' ) {
-        _fix_user_data($_) foreach @$node;
-    }
-    elsif ( ref $node eq 'HASH' ) {
-        my $user_data = ref $node->{properties} eq 'HASH' ? $node->{properties}{user_data} : undef;
-        $user_data->{maxLength} = 4 * int( ( $USER_DATA_MAX + 2 ) / 3 ) if ref $user_data eq 'HASH';
-        _fix_user_data($_) foreach values %$node;
-    }
+    _each_hash(
+        $spec,
+        sub {
+            my ($node) = @_;
+            my $user_data = ref $node->{properties} eq 'HASH' ? $node->{properties}{user_data} : undef;
+            $user_data->{maxLength} = 4 * int( ( $USER_DATA_MAX + 2 ) / 3 ) if ref $user_data eq 'HASH';
+            return;
+        }
+    );
 
-    return $node;
+    return $spec;
 }
 
 # JSON::Validator warns about a format that it has no rule for, on every value
@@ -385,18 +409,8 @@ sub _formats_in {
     state %found;
     return @{
         $found{$spec} //= do {
-            my ( %formats, @nodes );
-            @nodes = ($spec);
-            while (@nodes) {
-                my $node = shift @nodes;
-                if ( ref $node eq 'ARRAY' ) {
-                    push @nodes, @$node;
-                }
-                elsif ( ref $node eq 'HASH' ) {
-                    $formats{ $node->{format} } = 1 if defined $node->{format} && !ref $node->{format};
-                    push @nodes, values %$node;
-                }
-            }
+            my %formats;
+            _each_hash( $spec, sub { $formats{ $_[0]{format} } = 1 if defined $_[0]{format} && !ref $_[0]{format} } );
             [ sort keys %formats ];
         }
     };
