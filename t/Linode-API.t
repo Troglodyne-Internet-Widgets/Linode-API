@@ -1,9 +1,13 @@
-#!/usr/bin/env perl
+#!perl
 use 5.016;
 
 use strict;
 use warnings FATAL => 'all';
 use re '/aa';
+no autovivification;
+
+# The tests of the private subs call them by name, which is the point of them.
+## no critic (Subroutines::ProtectPrivateSubs)
 
 =head1 NAME
 
@@ -13,10 +17,11 @@ would
 
 =cut
 
-use Test2::V1 -i;
+use Test2::V1 qw{diag dies done_testing is isa_ok like ok ref_is ref_is_not subtest};
 use Test2::Plugin::NoWarnings;
 
-use Test::File::ShareDir::Dist { 'Linode-API' => 'share' };
+use Test::File::ShareDir::Dist ();
+BEGIN { Test::File::ShareDir::Dist->import( { 'Linode-API' => 'share' } ) }
 use FindBin::libs;
 
 use Cpanel::JSON::XS();
@@ -44,6 +49,15 @@ $fake->routes->any(
 sub client {
     my (%options) = @_;
     return Linode::API->new( app => $fake, %options );
+}
+
+# What the message that refuses an API version says, built in two pieces.
+sub refusal {
+    my ( $version, $offered ) = @_;
+    my $named = qr{ api_version [ ] ['] \Q$version\E ['] }sx;
+    my $head  = qr{ $named [ ] is [ ] not [ ] in [ ] the [ ] specification, }sx;
+    my $tail  = qr{ which [ ] offers [ ] [[] \Q$offered\E []] }sx;
+    return qr{ $head [ ] $tail }sx;
 }
 
 sub last_request {
@@ -103,7 +117,7 @@ subtest 'new' => sub {
 
     like(
         dies { client( api_version => 'v3' ) },
-        qr/api_version 'v3' is not in the specification, which offers \[v2beta, v4, v4beta\]/,
+        refusal( 'v3', 'v2beta, v4, v4beta' ),
         'an API version the specification does not offer is refused, naming the ones it does',
     );
 };
@@ -115,12 +129,12 @@ subtest 'invalid requests are not sent' => sub {
     my $tx = $linode->get_linode_instance( {} );
     is( scalar @requests,   0,   'a request missing a required path parameter never reaches the API' );
     is( $tx->error->{code}, 400, 'and says so with a 400' );
-    like( $tx->res->json->{errors}[0]{path}, qr/linodeId/, 'naming the parameter that is missing' ) or diag( $tx->res->body );
+    like( $tx->res->json->{errors}[0]{path}, qr{linodeId}sx, 'naming the parameter that is missing' ) or diag( $tx->res->body );
 
     @requests = ();
     $tx       = $linode->get_linode_instances( { 'X-Filter' => { label => 'bogus' } } );
     is( scalar @requests, 0, 'an X-Filter given as a hashref is not sent as HASH(0x...)' );
-    like( $tx->res->json->{errors}[0]{path}, qr/X-Filter/, 'it is refused, naming the header' ) or diag( $tx->res->body );
+    like( $tx->res->json->{errors}[0]{path}, qr{X-Filter}sx, 'it is refused, naming the header' ) or diag( $tx->res->body );
 };
 
 # Test2::Plugin::NoWarnings fails the file on the warning that JSON::Validator
@@ -137,7 +151,7 @@ subtest '_add_formats' => sub {
     @requests = ();
     my $tx = $linode->put_ip( { address => '203.0.113.5/24' }, json => { rdns => 'vm.test.test' } );
     is( scalar @requests, 0, 'a network is not an address, and is not sent' );
-    like( $tx->res->json->{errors}[0]{message}, qr/ip[ ]format/, 'it is refused, naming the format' ) or diag( $tx->res->body );
+    like( $tx->res->json->{errors}[0]{message}, qr{ip[ ]format}sx, 'it is refused, naming the format' ) or diag( $tx->res->body );
 
     $req = last_request( sub { $linode->post_linode_instance( {}, json => { region => 'bogus', type => 'bogus', authorized_keys => ['ssh-ed25519 AAAAbogus'] } ) } );
     is( $req->json->{authorized_keys}, ['ssh-ed25519 AAAAbogus'], 'a value in a format of Linode\'s own is sent for Linode to check' );
@@ -163,8 +177,9 @@ subtest 'encode_user_data' => sub {
     ok( length($compressed) <= $Linode::API::USER_DATA_MAX,  'fits once compressed' )                             or diag length $compressed;
 
     my $too_big = incompressible( $Linode::API::USER_DATA_MAX + 1 );
-    like( dies { Linode::API->encode_user_data($too_big) }, qr/16385 bytes, and \d+ bytes compressed[.]  Linode takes at most 16384/, 'one that does not fit even compressed is refused, with both sizes' );
-    like( dies { Linode::API->encode_user_data(undef) },    qr/needs the cloud-config/,                                               'and so is no cloud-config at all' );
+    like( dies { Linode::API->encode_user_data($too_big) }, qr{ 16385 [ ] bytes, [ ] and [ ] \d+ [ ] bytes [ ] compressed[.] }sx, 'one that does not fit even compressed is refused, with both sizes' );
+    like( dies { Linode::API->encode_user_data($too_big) }, qr{ Linode [ ] takes [ ] at [ ] most [ ] 16384 }sx,                   'and it says what Linode takes at most' );
+    like( dies { Linode::API->encode_user_data(undef) },    qr{needs [ ] the [ ] cloud-config}sx,                                 'and so is no cloud-config at all' );
 };
 
 subtest '_fix_user_data' => sub {
@@ -180,7 +195,7 @@ subtest '_fix_user_data' => sub {
     @requests = ();
     my $tx = $send->(21849);
     is( scalar @requests, 0, 'one character longer is not sent, though the specification allows it' );
-    like( $tx->res->json->{errors}[0]{path}, qr/user_data/, 'it is refused, naming user_data' ) or diag( $tx->res->body );
+    like( $tx->res->json->{errors}[0]{path}, qr{user_data}sx, 'it is refused, naming user_data' ) or diag( $tx->res->body );
 };
 
 subtest '_specification' => sub {
@@ -266,13 +281,13 @@ subtest '_fix_api_version' => sub {
 
     like(
         dies { Linode::API::_fix_api_version( $spec->(), 'v2beta' ) },
-        qr/api_version 'v2beta' is not in the specification, which offers \[v4, v4beta\]/,
+        refusal( 'v2beta', 'v4, v4beta' ),
         'a version no path offers is refused',
     );
 
     like(
         dies { Linode::API::_fix_api_version( { paths => {} }, 'v4' ) },
-        qr/which offers \[\]/,
+        qr{which [ ] offers [ ] [[][]]}sx,
         'a specification that offers no versions refuses every one',
     );
 };
